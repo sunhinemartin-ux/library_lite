@@ -6,13 +6,46 @@ use App\Models\User;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Hash;
+use Illuminate\Support\Facades\Http;
+use Exception;
 
 class UserController extends Controller
 {
-    public function index()
+   public function index()
     {
         $users = User::all();
-        return view('admin-dashboard', compact('users'));
+
+        $apiKey = env('WEATHERSTACK_API_KEY');
+        $city = env('WEATHERSTACK_DEFAULT_CITY', 'Arakan');
+
+        $weatherData = null;
+        $weatherError = null;
+
+        try {
+           $response = Http::timeout(10)->get('http://api.weatherstack.com/current', [
+                'access_key' => $apiKey,
+                'query' => $city
+            ]);
+
+            if ($response->successful() && !isset($response->json()['error'])) {
+                $data = $response->json();
+
+                $weatherData = [
+                    'city' => $data['location']['name'] ?? $city,
+                    'temperature' => $data['current']['temperature'] ?? 0,
+                    'description' => $data['current']['weather_descriptions'][0] ?? 'N/A',
+                    'humidity' => $data['current']['humidity'] ?? 0,
+                    'wind_speed' => $data['current']['wind_speed'] ?? 0,
+                    'icon' => $data['current']['weather_icons'][0] ?? null
+                ];
+            } else {
+                $weatherError = 'Unable to fetch weather data at the moment.';
+            }
+        } catch (Exception $e) {
+            $weatherError = 'Weather service is currently unavailable.';
+        }
+
+        return view('admin-dashboard', compact('users', 'weatherData', 'weatherError'));
     }
 
     public function store(Request $request)
